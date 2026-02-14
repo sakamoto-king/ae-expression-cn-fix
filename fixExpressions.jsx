@@ -1,7 +1,6 @@
 
 function fixExpressions(prop)
 {
-    $.writeln("开始修改");
     var effectNameMap =
     {
         'color control': '颜色控制',
@@ -114,11 +113,11 @@ function collectExpressions(propGroup)
             // expression 属性返回字符串，没有表达式则返回 ""
             if (prop.expression && prop.expression !== "")
             {
-                $.writeln("【属性】" + propName);
-                $.writeln("【匹配名】" + matchName);
-                $.writeln("【启用】" + (prop.expressionEnabled ? "是" : "否"));
-                $.writeln("【表达式】\n" + prop.expression);
-                $.writeln("----------------------------------------\n");
+                // $.writeln("【属性】" + propName);
+                // $.writeln("【匹配名】" + matchName);
+                // $.writeln("【启用】" + (prop.expressionEnabled ? "是" : "否"));
+                // $.writeln("【表达式】\n" + prop.expression);
+                // $.writeln("----------------------------------------\n");
                 fixExpressions(prop);
             }
         }
@@ -144,11 +143,11 @@ function traversalLayer(layer)
         return;
     }
     
-    if (!(layer.source instanceof CompItem))
-    {
-        $.write("非预合成");
-    }
-    $.writeln("图层【" + layer.name + "】");
+    // if (!(layer.source instanceof CompItem))
+    // {
+    //     $.write("非预合成");
+    // }
+    // $.writeln("图层【" + layer.name + "】");
 
     collectExpressions(layer);
 
@@ -167,7 +166,7 @@ function traversalLayer(layer)
             continue;
         }
 
-        $.writeln("子图层【" + subLayer.name + "】");
+        // $.writeln("子图层【" + subLayer.name + "】");
         traversalLayer(subLayer);
     }
 }
