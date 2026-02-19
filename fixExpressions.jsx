@@ -299,8 +299,8 @@ function fixAllPrecomp() {
 
 var textDefault = "欢迎使用表达式修改工具！\n\n" +
     "本工具会将表达式中的英文参数名替换为中文，修复因语言环境导致的表达式错误。\n\n" +
-    "使用方法：\n" + "1. 首先在项目窗口选中一个合成,然后载入指定合成或者直接载入全部合成\n" +
-    "2. 点击“修复”按钮开始修复。\n" +
+    "使用方法：\n" + "1. 首先载入全部错误表达式然后点击修复\n" +
+    "2. 如果仅需修复当前合成的错误表达式，点击“载入当前合成错误表达式”按钮然后再点击修复\n" +
     "3. 如需回退修改，点击“回退修改”按钮。\n";
 
 function setUI() {
@@ -352,13 +352,14 @@ function setUI() {
     loadButtonGroup.alignment = "center";
     loadButtonGroup.spacing = 20;
 
-    // 单合成修复按钮
-    var loadOnePrecompBtn = loadButtonGroup.add("button", undefined, "载入当前合成");
-    loadOnePrecompBtn.preferredSize = [120, 30];
-
     // 全部修复按钮
-    var loadAllPrecompBtn = loadButtonGroup.add("button", undefined, "载入全部合成");
-    loadAllPrecompBtn.preferredSize = [120, 30];
+    var loadAllPrecompBtn = loadButtonGroup.add("button", undefined, "载入全部错误表达式");
+    loadAllPrecompBtn.preferredSize = [150, 30];
+
+    // 单合成修复按钮
+    var loadOnePrecompBtn = loadButtonGroup.add("button", undefined, "载入当前合成错误表达式");
+    loadOnePrecompBtn.preferredSize = [200, 30];
+
 
     // 创建进度条
     var progressGroup = main.add("progressbar", undefined, 0, 100);
@@ -412,7 +413,6 @@ function setUI() {
         }
         fixBtn.enabled = true; // 启用修复按钮
     };
-
     loadAllPrecompBtn.onClick = function() {
         taskList = [];
         currentTaskIndex = 0;
@@ -427,21 +427,20 @@ function setUI() {
             for (var j = 1; j <= comp.numLayers; j++) {
                 var layer = comp.layer(j);
                 if (layer) {
-                    collectExpressions(layer);
+                    collectErrorExpressions(layer); // 只抓错误表达式
                 }
             }
         }
 
         if (taskList.length === 0) {
-            log("没有找到需要处理的表达式");
+            log("没有找到错误的表达式");
             return;
         }
 
-        if (taskList.length > 0) {
-            log("找到 " + taskList.length + " 条表达式");
-        }
+        log("找到 " + taskList.length + " 条错误表达式");
         fixBtn.enabled = true; // 启用修复按钮
     };
+
 
     fixBtn.onClick = function() {
         if (taskList.length === 0) {
@@ -451,6 +450,7 @@ function setUI() {
 
         app.beginUndoGroup("修复表达式");
         processBatch(); // 启动分批处理
+        fixBtn.enabled = false; // 修复过程中禁用修复按钮，避免重复点击
         revertBtn.enabled = true; // 启用回退按钮
     };
 
