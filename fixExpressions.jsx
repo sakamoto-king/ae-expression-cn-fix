@@ -3,79 +3,80 @@ var currentTaskIndex = 0; // 当前处理的表达式索引
 var batchSize = 20; // 每批处理20个表达式
 var history = []; // 新增：记录修改历史
 
+// 把这两个 map 提到全局，避免每次修复表达式时都重新创建
+var effectNameMap = {
+    'color control': '颜色控制',
+    'slider control': '滑块控制',
+    'angle control': '角度控制',
+    'point control': '点控制',
+    'checkbox control': '复选框控制',
+    'fill': '填充',
+    'stroke': '描边',
+    'gaussian blur': '高斯模糊',
+    'fast blur': '快速模糊',
+    'motion blur': '动态模糊',
+    'radial blur': '径向模糊',
+    'transform': '变换',
+    'opacity': '不透明度',
+    'levels': '色阶',
+    'curves': '曲线',
+    'exposure': '曲线',
+    'hue/saturation': '色相/饱和度',
+    'brightness & contrast': '亮度和对比度',
+    'tint': '色调',
+    'tritone': '三色调',
+    'drop shadow': '投影',
+    'glow': '发光',
+    'gradient ramp': '渐变渐变',
+    'mosaic': '马赛克',
+    'noise': '杂色',
+    'fractal noise': '分形杂色',
+    'turbulent displace': '湍流置换',
+    'offset': '位移',
+    'echo': '回声',
+    'time displacement': '时间置换',
+    'posterize time': '时间色调分离',
+    'venetian blinds': '百叶窗',
+    'gradient': '渐变',
+    'fill': '填充',
+    'roughen edges': '毛边',
+    'spherize': '球面化',
+    'mesh warp': '网格变形',
+    'ripple': '波纹',
+    'paint': '绘画',
+    'brush strokes': '画笔描边',
+    'cartoon': '卡通',
+    'texturize': '纹理化',
+};
+
+var paramNameMap = {
+    'color': '颜色',
+    'slider': '滑块',
+    'angle': '角度',
+    'point': '点',
+    'checkbox': '复选框',
+    'opacity': '不透明度',
+    'position': '位置',
+    'scale': '缩放',
+    'rotation': '旋转',
+    'size': '大小',
+    'intensity': '强度',
+    'softness': '柔和度',
+    'spread': '扩展',
+    'distance': '距离',
+    'amount': '数量',
+    'depth': '深度',
+    'thickness': '粗细',
+    'offset': '偏移',
+    'evolution': '演化',
+    'radius': '半径',
+    'direction': '方向',
+    'speed': '速度',
+    'width': '宽度',
+    'height': '高度'
+};
+
 function fixExpressions(prop) {
-    var effectNameMap = {
-        'color control': '颜色控制',
-        'slider control': '滑块控制',
-        'angle control': '角度控制',
-        'point control': '点控制',
-        'checkbox control': '复选框控制',
-        'fill': '填充',
-        'stroke': '描边',
-        'gaussian blur': '高斯模糊',
-        'fast blur': '快速模糊',
-        'motion blur': '动态模糊',
-        'radial blur': '径向模糊',
-        'transform': '变换',
-        'opacity': '不透明度',
-        'levels': '色阶',
-        'curves': '曲线',
-        'exposure': '曲线',
-        'hue/saturation': '色相/饱和度',
-        'brightness & contrast': '亮度和对比度',
-        'tint': '色调',
-        'tritone': '三色调',
-        'drop shadow': '投影',
-        'glow': '发光',
-        'gradient ramp': '渐变渐变',
-        'mosaic': '马赛克',
-        'noise': '杂色',
-        'fractal noise': '分形杂色',
-        'turbulent displace': '湍流置换',
-        'offset': '位移',
-        'echo': '回声',
-        'time displacement': '时间置换',
-        'posterize time': '时间色调分离',
-        'venetian blinds': '百叶窗',
-        'gradient': '渐变',
-        'fill': '填充',
-        'roughen edges': '毛边',
-        'spherize': '球面化',
-        'mesh warp': '网格变形',
-        'ripple': '波纹',
-        'paint': '绘画',
-        'brush strokes': '画笔描边',
-        'cartoon': '卡通',
-        'texturize': '纹理化',
-    };
-
-    var paramNameMap = {
-        'color': '颜色',
-        'slider': '滑块',
-        'angle': '角度',
-        'point': '点',
-        'checkbox': '复选框',
-        'opacity': '不透明度',
-        'position': '位置',
-        'scale': '缩放',
-        'rotation': '旋转',
-        'size': '大小',
-        'intensity': '强度',
-        'softness': '柔和度',
-        'spread': '扩展',
-        'distance': '距离',
-        'amount': '数量',
-        'depth': '深度',
-        'thickness': '粗细',
-        'offset': '偏移',
-        'evolution': '演化',
-        'radius': '半径',
-        'direction': '方向',
-        'speed': '速度',
-        'width': '宽度',
-        'height': '高度'
-    };
-
     var oldExpression = prop.expression;
     var expression = oldExpression;
 
@@ -96,6 +97,8 @@ function fixExpressions(prop) {
         }); // 记录修改前的表达式
         log("修复表达式: " + oldExpression);
         prop.expression = expression;
+    } else {
+        log("非语言引发的错误表达式: " + oldExpression);
     }
 }
 
@@ -200,47 +203,19 @@ function processBatch() {
     if (currentTaskIndex < taskList.length) {
         app.scheduleTask("processBatch()", 10, false);
     } else {
-        log("处理完成，共处理: " + taskList.length + " 条表达式");
+        log("处理完成，共处理: " + taskList.length + " 条错误表达式");
         taskList = [];
         currentTaskIndex = 0;
     }
 }
 
-
-
-function fixAllPrecompErrors() {
-    for (var i = 1; i <= app.project.numItems; i++) {
-        var item = app.project.item(i);
-
-        if (!item || !(item instanceof CompItem) || item.numLayers == 0) {
-            continue;
-        }
-
-        for (var j = 1; j <= item.numLayers; j++) {
-            var layer = item.layer(j);
-            if (!layer) {
-                continue;
-            }
-
-            collectErrorExpressions(layer);
-        }
-    }
-}
-
-
-// 递归遍历图层及其预合成中的所有子图层，收集并修复表达式
+// 递归遍历图层及其预合成中的所有子图层，收集错误的表达式
 function traversalLayer(layer) {
     if (!layer) {
         return;
     }
 
-    // if (!(layer.source instanceof CompItem))
-    // {
-    //     $.write("非预合成");
-    // }
-    // $.writeln("图层【" + layer.name + "】");
-
-    collectExpressions(layer);
+    collectErrorExpressions(layer);
 
     if (!(layer.source instanceof CompItem)) {
         return;
@@ -254,46 +229,7 @@ function traversalLayer(layer) {
             continue;
         }
 
-        // $.writeln("子图层【" + subLayer.name + "】");
         traversalLayer(subLayer);
-    }
-}
-
-// 遍历当前合成的所有图层，修复表达式
-function fixOnePrecomp() {
-    var comp = app.project.activeItem;
-    if (!(comp instanceof CompItem)) {
-        alert("请先激活一个合成！");
-        return;
-    }
-
-    for (var i = 1; i <= comp.numLayers; i++) {
-        var layer = comp.layer(i);
-        if (!layer) {
-            continue;
-        }
-
-        traversalLayer(layer);
-    }
-}
-
-// 遍历项目中所有合成的所有图层，修复表达式
-function fixAllPrecomp() {
-    for (var i = 1; i <= app.project.numItems; i++) {
-        var comp = app.project.item(i);
-
-        if (!comp || !(comp instanceof CompItem) || comp.numLayers == 0) {
-            continue;
-        }
-
-        for (var j = 1; j <= comp.numLayers; j++) {
-            var layer = comp.layer(j);
-            if (!layer) {
-                continue;
-            }
-
-            collectExpressions(layer);
-        }
     }
 }
 
@@ -450,6 +386,7 @@ function setUI() {
 
         app.beginUndoGroup("修复表达式");
         processBatch(); // 启动分批处理
+        app.endUndoGroup();
         fixBtn.enabled = false; // 修复过程中禁用修复按钮，避免重复点击
         revertBtn.enabled = true; // 启用回退按钮
     };
