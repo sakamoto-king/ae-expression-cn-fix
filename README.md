@@ -2,7 +2,7 @@
 AE英文表达式在中文环境下报错的修复插件
 
 ## 安装
-1. 下载插件文件 `AE Expression CN Fix 表达式修复.jsx`
+1. 下载插件文件 `表达式修复 AE Expression CN Fix.jsx`
 2. 将文件复制到 After Effects 的Scripts\ScriptUI Panels目录：
    - Windows: `C:\Program Files\Adobe\Adobe After Effects <version>\Support Files\Scripts\ScriptUI Panels\`
    - macOS: `/Applications/Adobe After Effects <version>/Scripts/ScriptUI Panels/`
@@ -10,7 +10,7 @@ AE英文表达式在中文环境下报错的修复插件
 
 ## 使用
 1. 打开 After Effects
-2. 在菜单栏选择 `窗口 > AE Expression CN Fix 表达式修复` 打开插件面板
+2. 在菜单栏选择 `窗口 > 表达式修复 AE Expression CN Fix` 打开插件面板
 3. 在项目窗口选中需要修复表达式的预合成
 4. 点击插件界面中的 `修复表达式` 按钮
 5. 插件会自动修复选中预合成中的所有表达式
