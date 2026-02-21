@@ -2,12 +2,20 @@ var version = "1.0.1"; // 版本号var
 var ui = {}; // 建立一个 ui 对象
 var taskList = []; // 待处理的表达式列表
 var currentTaskIndex = 0; // 当前处理的表达式索引
-var batchSize = 20; // 每批处理表达式的数量
+var fixBatchSize = 20; // 每批处理表达式的数量
 var history = []; // 新增：记录修改历史
 var githubLink = "https://github.com/feather-1500/ae-expression-cn-fix"; // GitHub链接
 var email = "ahang@silky.site"; // 邮箱
-var compList = []; // 存储遍历过的合成列表
 
+// 收集表达式相关的全局变量
+var collectCompList = []; // 存储待收集的合成列表
+var collectCompIndex = 0; // 当前处理的合成索引
+var collectLayerIndex = 1; // 从1开始，因为AE的属性索引是从1开始的
+var isCollecting = false; // 是否正在收集
+var visitedComps = []; // 存储遍历过的合成列表
+var collectBatchSize = 10; // 每批收集合成的数量
+
+// 打开链接函数，兼容Windows和Mac系统
 function openURL(url) {
     if ($.os.indexOf("Windows") !== -1) {
         system.callSystem('explorer "' + url + '"');
@@ -172,6 +180,46 @@ function collectErrorExpressions(propGroup) {
     }
 }
 
+// 分批处理收集表达式，避免一次性处理过多导致界面卡死
+function processCollectBatch() {
+
+    if (collectCompIndex >= collectCompList.length) {
+        isCollecting = false;
+        log("收集完成，共找到 " + taskList.length + " 条错误表达式");
+        ui.fixBtn.enabled = taskList.length > 0;
+        return;
+    }
+
+    // 计算当前批次结束的合成索引
+    var end = Math.min(
+        collectCompIndex + collectBatchSize,
+        collectCompList.length
+    );
+
+    // 遍历这一批合成
+    for (var i = collectCompIndex; i < end; i++) {
+
+        var comp = collectCompList[i];
+
+        for (var j = 1; j <= comp.numLayers; j++) {
+            var layer = comp.layer(j);
+            if (layer) {
+                collectErrorExpressions(layer);
+            }
+        }
+    }
+
+    collectCompIndex = end;
+
+    // 更新进度（按合成数量）
+    var progress = Math.round(
+        (collectCompIndex / collectCompList.length) * 100
+    );
+    ui.progressBar.value = progress;
+
+    app.scheduleTask("processCollectBatch()", 1, false);
+}
+
 // 分批处理表达式修复，避免一次性处理过多导致界面卡死
 
 var isFixing = false; // 是否正在修复
@@ -179,7 +227,7 @@ var startTime = 0; // 开始时间
 var endTime = 0; // 结束时间
 
 function processBatch() {
-    var end = Math.min(currentTaskIndex + batchSize, taskList.length);
+    var end = Math.min(currentTaskIndex + fixBatchSize, taskList.length);
 
     for (var i = currentTaskIndex; i < end; i++) {
         fixExpressions(taskList[i]);
@@ -221,11 +269,11 @@ function traversalLayer(layer) {
     }
 
     // 避免重复遍历同一个合成
-    if (compList.indexOf(layer.source) !== -1) {
+    if (visitedComps.indexOf(layer.source) !== -1) {
         return;
     }
 
-    compList.push(layer.source); // 记录遍历过的合成，避免重复遍历
+    visitedComps.push(layer.source); // 记录遍历过的合成，避免重复遍历
     var precomp = layer.source;
 
     for (var i = 1; i <= precomp.numLayers; i++) {
@@ -354,7 +402,7 @@ function setUI(thisObj) {
 
     loadOnePrecompBtn.onClick = function() {
         taskList = [];
-        compList = []; // 重置合成列表，避免影响后续操作
+        visitedComps = []; // 重置合成列表，避免影响后续操作
         currentTaskIndex = 0;
 
         var comp = app.project.activeItem;
@@ -380,32 +428,37 @@ function setUI(thisObj) {
         }
         fixBtn.enabled = true; // 启用修复按钮
     };
+
+    // 全收集按钮点击事件
     loadAllPrecompBtn.onClick = function() {
+
+        if (isCollecting) return;
+
+        // 重置全局变量
         taskList = [];
-        currentTaskIndex = 0;
+        collectCompList = [];
+        collectCompIndex = 0;
+        collectLayerIndex = 1;
+        visitedComps = [];
 
+        // 收集所有合成
         for (var i = 1; i <= app.project.numItems; i++) {
-            var comp = app.project.item(i);
-
-            if (!comp || !(comp instanceof CompItem) || comp.numLayers == 0) {
-                continue;
-            }
-
-            for (var j = 1; j <= comp.numLayers; j++) {
-                var layer = comp.layer(j);
-                if (layer) {
-                    collectErrorExpressions(layer); // 只抓错误表达式
-                }
+            var item = app.project.item(i);
+            if (item instanceof CompItem && item.numLayers > 0) {
+                collectCompList.push(item);
             }
         }
 
-        if (taskList.length === 0) {
-            log("没有找到错误的表达式");
+        if (collectCompList.length === 0) {
+            log("没有可遍历的合成");
             return;
         }
 
-        log("找到 " + taskList.length + " 条错误表达式");
-        fixBtn.enabled = true; // 启用修复按钮
+        log("已找到 " + collectCompList.length + " 个合成，开始收集错误表达式...");
+        isCollecting = true;
+        ui.progressBar.value = 0;
+
+        processCollectBatch();
     };
 
 
@@ -438,21 +491,21 @@ function setUI(thisObj) {
     // 标签页2：设置
     // -----------------------------------
     // 设置每次批处理的数量
-    var batchSizeGroup = tab2.add("group");
-    batchSizeGroup.orientation = "row";
-    batchSizeGroup.add("statictext", undefined, "每批处理表达式数量:");
-    var batchSizeInput = batchSizeGroup.add("edittext", undefined, batchSize.toString());
-    batchSizeInput.preferredSize.width = 50;
-    var batchSizeSaveBtn = batchSizeGroup.add("button", undefined, "保存");
-    batchSizeSaveBtn.onClick = function() {
-        var input = parseInt(batchSizeInput.text);
+    var fixBatchSizeGroup = tab2.add("group");
+    fixBatchSizeGroup.orientation = "row";
+    fixBatchSizeGroup.add("statictext", undefined, "每批处理表达式数量:");
+    var fixBatchSizeInput = fixBatchSizeGroup.add("edittext", undefined, fixBatchSize.toString());
+    fixBatchSizeInput.preferredSize.width = 50;
+    var fixBatchSizeSaveBtn = fixBatchSizeGroup.add("button", undefined, "保存");
+    fixBatchSizeSaveBtn.onClick = function() {
+        var input = parseInt(fixBatchSizeInput.text);
         if (isNaN(input) || input <= 0) {
             alert("请输入一个有效的正整数！");
-            batchSizeInput.text = batchSize.toString();
+            fixBatchSizeInput.text = fixBatchSize.toString();
             return;
         }
-        batchSize = input;
-        alert("每批处理数量已更新为: " + batchSize);
+        fixBatchSize = input;
+        alert("每批处理数量已更新为: " + fixBatchSize);
     };
 
     // 当前版本
