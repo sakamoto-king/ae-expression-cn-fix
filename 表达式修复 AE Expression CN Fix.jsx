@@ -1,24 +1,29 @@
-var version = "1.0.1"; // 版本号var 
-var ui = {}; // 建立一个 ui 对象
-var taskList = []; // 待处理的表达式列表
-var currentTaskIndex = 0; // 当前处理的表达式索引
-var fixBatchSize = 20; // 每批处理表达式的数量
-var history = []; // 新增：记录修改历史
+var version = "1.1.0"; // 版本号var 
 var githubLink = "https://github.com/feather-1500/ae-expression-cn-fix"; // GitHub链接
 var email = "ahang@silky.site"; // 邮箱
 
-// 收集表达式相关的全局变量
+// 收集合成相关的全局变量
 var collectCompList = []; // 存储待收集的合成列表
 var collectCompIndex = 0; // 当前处理的合成索引
 var collectLayerIndex = 1; // 从1开始，因为AE的属性索引是从1开始的
 var isCollecting = false; // 是否正在收集
 var visitedComps = []; // 存储遍历过的合成列表
-var collectCompBatchSize = 10; // 每批收集合成的数量
+var collectCompBatchSize = 5; // 每批收集合成的数量
 
-// 嵌套收集表达式相关的全局变量
-var collectLayerBatchSize = 50; // 每批收集图层数量（默认50）
+// 嵌套收集图层相关的全局变量
+var collectLayerBatchSize = 10; // 每批收集图层数量（默认50）
 var allLayersToScan = []; // 存储所有待扫描图层
 var collectLayerIndex = 0; // 当前扫描到的图层索引
+
+// 修复表达式相关的全局变量
+var taskList = []; // 待处理的表达式列表
+var fixBatchSize = 20; // 每批处理表达式的数量
+var history = []; // 新增：记录修改历史
+var currentTaskIndex = 0; // 当前处理的表达式索引
+
+// UI对象的全局变量
+var ui = {};
+
 
 // 打开链接函数，兼容Windows和Mac系统
 function openURL(url) {
@@ -102,6 +107,7 @@ var paramNameMap = {
     'height': '高度'
 };
 
+// 修复表达式函数，替换表达式中的英文参数名为中文，并记录修改历史以便回退
 function fixExpressions(prop) {
     var oldExpression = prop.expression;
     var expression = oldExpression;
@@ -155,6 +161,14 @@ function log(message) {
         logFirstTime = false;
         logIndex = 1; // 初始化
     }
+
+    //清空命令
+    if (message === "clear") {
+        ui.logBox.text = "";
+        logIndex = 1;
+        return;
+    }
+
 
     if (ui.logBox) {
         // 添加序号
@@ -430,23 +444,24 @@ function setUI(thisObj) {
 
     logBoxRef = logBox; // 绑定
 
-    // 创建载入按钮区域
-    var loadButtonGroup = tab1.add("group");
-    loadButtonGroup.orientation = "row";
-    loadButtonGroup.alignment = "center";
-    loadButtonGroup.spacing = 20;
+    // 创建载入区域
+    var loadGroup = tab1.add("group");
+    loadGroup.orientation = "row";
+    loadGroup.alignment = "center";
+    loadGroup.spacing = 10;
 
-    // 载入全部错误表达式按钮
-    var loadAllCompBtn = loadButtonGroup.add("button", undefined, "载入全部错误表达式");
-    loadAllCompBtn.preferredSize = [150, 30];
+    // 下拉框
+    var loadModeDropdown = loadGroup.add("dropdownlist", undefined, [
+        "整个项目",
+        "选中合成和嵌套的子合成",
+        "仅选中合成的图层"
+    ]);
+    loadModeDropdown.preferredSize = [200, 30];
+    loadModeDropdown.selection = 0; // 默认选中“整个项目”
 
-    // 嵌套载入当前合成错误表达式按钮
-    var loadOneCompNestedBtn = loadButtonGroup.add("button", undefined, "嵌套载入当前合成错误表达式");
-    loadOneCompNestedBtn.preferredSize = [180, 30];
-
-    // 仅当前合成载入错误表达式按钮(不嵌套收集)
-    var loadOneCompCurrentBtn = loadButtonGroup.add("button", undefined, "仅当前合成载入错误表达式");
-    loadOneCompCurrentBtn.preferredSize = [150, 30];
+    // 载入按钮
+    var loadBtn = loadGroup.add("button", undefined, "载入");
+    loadBtn.preferredSize = [80, 30];
 
     // 创建进度条
     var progressGroup = tab1.add("progressbar", undefined, 0, 100);
@@ -472,105 +487,98 @@ function setUI(thisObj) {
     // 未选择合成时的提示文本
     var noCompText = "请先在'项目'面板激活一个合成！或者右键鼠标->[显示]->[在项目中显示合成]";
 
-    //  仅当前合成载入错误表达式按钮点击事件
-    loadOneCompCurrentBtn.onClick = function() {
+    //  载入按钮点击事件
+    loadBtn.onClick = function() {
 
-        // 避免重复点击
         if (isCollecting) return;
 
-        // 重置相关全局变量
+        log("clear"); // 每次载入前清空日志
+
+        var mode = loadModeDropdown.selection.index;
+
+        // 重置通用变量
         taskList = [];
         visitedComps = [];
         allLayersToScan = [];
         collectLayerIndex = 0;
-
-        var comp = app.project.activeItem;
-        if (!(comp instanceof CompItem)) {
-            alert(noCompText);
-            return;
-        }
-
-        visitedComps.push(comp);
-        collectAllLayersFromComp(comp, false); // 仅收集当前合成的图层，不递归收集预合成中的图层
-
-        if (allLayersToScan.length === 0) {
-            log("没有可扫描的图层");
-            return;
-        }
-
-        log("共扫描到 " + allLayersToScan.length + " 个图层，开始扫描表达式...");
-
-        ui.progressBar.value = 0;
-
-        processLayerCollectBatch();
-
-    }
-
-    loadOneCompNestedBtn.onClick = function() {
-
-        // 避免重复点击
-        if (isCollecting) return;
-
-        // 重置相关全局变量
-        taskList = [];
-        visitedComps = [];
-        allLayersToScan = [];
-        collectLayerIndex = 0;
-
-        var comp = app.project.activeItem;
-        if (!(comp instanceof CompItem)) {
-            alert(noCompText);
-            return;
-        }
-
-        visitedComps.push(comp);
-        collectAllLayersFromComp(comp, true);
-
-        if (allLayersToScan.length === 0) {
-            log("没有可扫描的图层");
-            return;
-        }
-
-        log("共扫描到 " + allLayersToScan.length + " 个图层，开始扫描表达式...");
-
-        ui.progressBar.value = 0;
-
-        processLayerCollectBatch();
-    };
-
-    // 全收集按钮点击事件
-    loadAllCompBtn.onClick = function() {
-
-        if (isCollecting) return;
-
-        // 重置全局变量
-        taskList = [];
         collectCompList = [];
         collectCompIndex = 0;
-        collectLayerIndex = 1;
-        visitedComps = [];
 
-        // 收集所有合成
-        for (var i = 1; i <= app.project.numItems; i++) {
-            var item = app.project.item(i);
-            if (item instanceof CompItem && item.numLayers > 0) {
-                collectCompList.push(item);
-            }
-        }
-
-        if (collectCompList.length === 0) {
-            log("没有可遍历的合成");
-            return;
-        }
-
-        log("已找到 " + collectCompList.length + " 个合成，开始收集错误表达式...");
-        isCollecting = true;
         ui.progressBar.value = 0;
 
-        processCollectBatch();
+        // =========================
+        // 模式 0：整个项目
+        // =========================
+        if (mode === 0) {
+
+            for (var i = 1; i <= app.project.numItems; i++) {
+                var item = app.project.item(i);
+                if (item instanceof CompItem && item.numLayers > 0) {
+                    collectCompList.push(item);
+                }
+            }
+
+            if (collectCompList.length === 0) {
+                log("没有可遍历的合成");
+                return;
+            }
+
+            log("已找到 " + collectCompList.length + " 个合成，开始收集...");
+            isCollecting = true;
+
+            processCollectBatch();
+        }
+
+        // =========================
+        // 模式 1：选中合成 + 子合成
+        // =========================
+        else if (mode === 1) {
+
+            var comp = app.project.activeItem;
+            if (!(comp instanceof CompItem)) {
+                alert("请先激活一个合成！");
+                return;
+            }
+
+            visitedComps.push(comp);
+            collectAllLayersFromComp(comp, true);
+
+            if (allLayersToScan.length === 0) {
+                log("没有可扫描的图层");
+                return;
+            }
+
+            log("共扫描到 " + allLayersToScan.length + " 个图层");
+            processLayerCollectBatch();
+        }
+
+        // =========================
+        // 模式 2：仅当前合成
+        // =========================
+        else if (mode === 2) {
+
+            var comp = app.project.activeItem;
+            if (!(comp instanceof CompItem)) {
+                alert("请先激活一个合成！");
+                return;
+            }
+
+            visitedComps.push(comp);
+            collectAllLayersFromComp(comp, false);
+
+            if (allLayersToScan.length === 0) {
+                log("没有可扫描的图层");
+                return;
+            }
+
+            log("共扫描到 " + allLayersToScan.length + " 个图层");
+            processLayerCollectBatch();
+        }
     };
 
     fixBtn.onClick = function() {
+        log("clear"); // 每次修复前清空日志
+
         if (taskList.length === 0) {
             log("没有需要修复的表达式");
             return;
