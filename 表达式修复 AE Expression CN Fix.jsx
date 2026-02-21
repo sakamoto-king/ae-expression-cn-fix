@@ -1,4 +1,5 @@
-var version = "1.1.0"; // 版本号var 
+var version = "1.1.0"; // 版本号
+var updateDate = "2026-02-21"; // 更新日期
 var githubLink = "https://github.com/feather-1500/ae-expression-cn-fix"; // GitHub链接
 var email = "ahang@silky.site"; // 邮箱
 
@@ -306,7 +307,7 @@ var isFixing = false; // 是否正在修复
 var startTime = 0; // 开始时间
 var endTime = 0; // 结束时间
 
-function processBatch() {
+function processFixBatch() {
     var end = Math.min(currentTaskIndex + fixBatchSize, taskList.length);
 
     for (var i = currentTaskIndex; i < end; i++) {
@@ -321,7 +322,7 @@ function processBatch() {
     }
 
     if (currentTaskIndex < taskList.length) {
-        app.scheduleTask("processBatch()", 10, false);
+        app.scheduleTask("processFixBatch()", 10, false);
     } else {
         endTime = new Date().getTime(); // 记录结束时间
         var timeTaken = ((endTime - startTime) / 1000).toFixed(2);
@@ -367,6 +368,8 @@ function traversalLayer(layer) {
 }
 
 var textDefault = "欢迎使用表达式修改工具！\n\n" +
+    "版本号: " + version + "\n" +
+    "更新日期: " + updateDate + "\n\n" +
     "本工具会将表达式中的英文参数名替换为中文，修复因语言环境导致的表达式错误。\n\n" +
     "使用方法：\n" + "1. 首先载入全部错误表达式然后点击修复\n" +
     "2. 如果仅需修复当前合成的错误表达式，点击“载入当前合成错误表达式”按钮然后再点击修复\n" +
@@ -407,6 +410,7 @@ function setUI(thisObj) {
     // -----------------------------------
     // 标签页1：表达式修复
     // -----------------------------------
+
     // 详细信息区域
     var infoGroup = tab1.add("group");
     infoGroup.orientation = "column";
@@ -414,7 +418,13 @@ function setUI(thisObj) {
 
     // 详细信息切换按钮
     var isDetailVisible = true; // 详细信息默认值
-    var detailToggle = infoGroup.add("button", undefined, "▼ 详细信息");
+
+    var toggleWrapper = infoGroup.add("group");
+    toggleWrapper.alignChildren = ["fill", "top"];
+    toggleWrapper.margins = [0, 10, 0, 0];
+
+    var detailToggle = toggleWrapper.add("button", undefined, "▼ 详细信息");
+
     detailToggle.onClick = function() {
         isDetailVisible = !isDetailVisible;
 
@@ -449,6 +459,7 @@ function setUI(thisObj) {
     loadGroup.orientation = "row";
     loadGroup.alignment = "center";
     loadGroup.spacing = 10;
+    loadGroup.margins = [0, 10, 0, 0];
 
     // 下拉框
     var loadModeDropdown = loadGroup.add("dropdownlist", undefined, [
@@ -456,7 +467,7 @@ function setUI(thisObj) {
         "选中合成和嵌套的子合成",
         "仅选中合成的图层"
     ]);
-    loadModeDropdown.preferredSize = [200, 30];
+    loadModeDropdown.preferredSize = [170, 30];
     loadModeDropdown.selection = 0; // 默认选中“整个项目”
 
     // 载入按钮
@@ -589,7 +600,7 @@ function setUI(thisObj) {
             startTime = new Date().getTime(); // 记录开始时间
         }
         app.beginUndoGroup("修复表达式"); // 开始撤销组
-        processBatch(); // 启动分批处理
+        processFixBatch(); // 启动分批处理
     };
 
 
@@ -614,7 +625,7 @@ function setUI(thisObj) {
     var settingInfoText = "如果处理过程中界面卡死情况，可以尝试减小每批处理的数量";
     settingInfoGroup.add("statictext", undefined, settingInfoText);
     // 上下边距
-    settingInfoGroup.margins = [0, 20, 0, 20];
+    settingInfoGroup.margins = [0, 10, 0, 10];
 
     // 设置每次批处理的数量
     var BatchSizeGroup = tab2.add("group");
@@ -704,6 +715,7 @@ function setUI(thisObj) {
     // 标签页3：关于
     // -----------------------------------
     var aboutText = "表达式修改工具 v" + version + "\n\n" +
+        "更新日期: " + updateDate + "\n\n" +
         "本工具由 feather-1500 sakamoto-king 开发，旨在帮助 After Effects 用户修复因语言环境导致的表达式错误。\n\n" +
         "GitHub: " + githubLink + "\n\n" +
         "使用方法：\n" +
