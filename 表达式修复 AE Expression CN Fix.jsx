@@ -13,7 +13,12 @@ var collectCompIndex = 0; // 当前处理的合成索引
 var collectLayerIndex = 1; // 从1开始，因为AE的属性索引是从1开始的
 var isCollecting = false; // 是否正在收集
 var visitedComps = []; // 存储遍历过的合成列表
-var collectBatchSize = 10; // 每批收集合成的数量
+var collectCompBatchSize = 10; // 每批收集合成的数量
+
+// 嵌套收集表达式相关的全局变量
+var collectLayerBatchSize = 50; // 每批收集图层数量（默认50）
+var allLayersToScan = []; // 存储所有待扫描图层
+var collectLayerIndex = 0; // 当前扫描到的图层索引
 
 // 打开链接函数，兼容Windows和Mac系统
 function openURL(url) {
@@ -180,7 +185,32 @@ function collectErrorExpressions(propGroup) {
     }
 }
 
-// 分批处理收集表达式，避免一次性处理过多导致界面卡死
+// 收集合成中的所有图层,默认递归收集预合成中的图层，如果不需要递归收集预合成中的图层，传入 false 即可
+function collectAllLayersFromComp(comp, isRecursive) {
+
+    if (!comp) return;
+
+    for (var i = 1; i <= comp.numLayers; i++) {
+
+        var layer = comp.layer(i);
+        if (!layer) continue;
+
+        allLayersToScan.push(layer);
+
+        // 如果不递归，直接跳过
+        if (!isRecursive) continue;
+
+        if (layer.source instanceof CompItem) {
+
+            if (visitedComps.indexOf(layer.source) === -1) {
+                visitedComps.push(layer.source);
+                collectAllLayersFromComp(layer.source, true);
+            }
+        }
+    }
+}
+
+// 按合成分批处理收集表达式，避免一次性处理过多导致界面卡死
 function processCollectBatch() {
 
     if (collectCompIndex >= collectCompList.length) {
@@ -192,7 +222,7 @@ function processCollectBatch() {
 
     // 计算当前批次结束的合成索引
     var end = Math.min(
-        collectCompIndex + collectBatchSize,
+        collectCompIndex + collectCompBatchSize,
         collectCompList.length
     );
 
@@ -217,7 +247,43 @@ function processCollectBatch() {
     );
     ui.progressBar.value = progress;
 
-    app.scheduleTask("processCollectBatch()", 1, false);
+    app.scheduleTask("processCollectBatch()", 10, false);
+}
+
+// 按图层分批处理收集，避免一次性处理过多导致界面卡死
+function processLayerCollectBatch() {
+
+    var end = Math.min(
+        collectLayerIndex + collectLayerBatchSize,
+        allLayersToScan.length
+    );
+
+    for (var i = collectLayerIndex; i < end; i++) {
+
+        var layer = allLayersToScan[i];
+        collectErrorExpressions(layer);
+    }
+
+    collectLayerIndex = end;
+
+    // 更新进度
+    var percent = Math.round(
+        (collectLayerIndex / allLayersToScan.length) * 100
+    );
+
+    ui.progressBar.value = percent;
+
+    if (collectLayerIndex < allLayersToScan.length) {
+        app.scheduleTask("processLayerCollectBatch()", 10, false);
+    } else {
+
+        log("收集完成，共找到 " + taskList.length + " 条错误表达式");
+
+        ui.fixBtn.enabled = taskList.length > 0;
+
+        allLayersToScan = [];
+        collectLayerIndex = 0;
+    }
 }
 
 // 分批处理表达式修复，避免一次性处理过多导致界面卡死
@@ -370,14 +436,17 @@ function setUI(thisObj) {
     loadButtonGroup.alignment = "center";
     loadButtonGroup.spacing = 20;
 
-    // 全部修复按钮
-    var loadAllPrecompBtn = loadButtonGroup.add("button", undefined, "载入全部错误表达式");
-    loadAllPrecompBtn.preferredSize = [150, 30];
+    // 载入全部错误表达式按钮
+    var loadAllCompBtn = loadButtonGroup.add("button", undefined, "载入全部错误表达式");
+    loadAllCompBtn.preferredSize = [150, 30];
 
-    // 单合成修复按钮
-    var loadOnePrecompBtn = loadButtonGroup.add("button", undefined, "载入当前合成错误表达式");
-    loadOnePrecompBtn.preferredSize = [180, 30];
+    // 嵌套载入当前合成错误表达式按钮
+    var loadOneCompNestedBtn = loadButtonGroup.add("button", undefined, "嵌套载入当前合成错误表达式");
+    loadOneCompNestedBtn.preferredSize = [180, 30];
 
+    // 仅当前合成载入错误表达式按钮(不嵌套收集)
+    var loadOneCompCurrentBtn = loadButtonGroup.add("button", undefined, "仅当前合成载入错误表达式");
+    loadOneCompCurrentBtn.preferredSize = [150, 30];
 
     // 创建进度条
     var progressGroup = tab1.add("progressbar", undefined, 0, 100);
@@ -400,37 +469,77 @@ function setUI(thisObj) {
     revertBtn.preferredSize = [120, 30];
     revertBtn.enabled = false; // 初始状态禁用，只有修复后才启用
 
-    loadOnePrecompBtn.onClick = function() {
+    // 未选择合成时的提示文本
+    var noCompText = "请先在'项目'面板激活一个合成！或者右键鼠标->[显示]->[在项目中显示合成]";
+
+    //  仅当前合成载入错误表达式按钮点击事件
+    loadOneCompCurrentBtn.onClick = function() {
+
+        // 避免重复点击
+        if (isCollecting) return;
+
+        // 重置相关全局变量
         taskList = [];
-        visitedComps = []; // 重置合成列表，避免影响后续操作
-        currentTaskIndex = 0;
+        visitedComps = [];
+        allLayersToScan = [];
+        collectLayerIndex = 0;
 
         var comp = app.project.activeItem;
         if (!(comp instanceof CompItem)) {
-            alert("请先激活一个合成！");
+            alert(noCompText);
             return;
         }
 
-        for (var i = 1; i <= comp.numLayers; i++) {
-            var layer = comp.layer(i);
-            if (layer) {
-                traversalLayer(layer); // 先递归遍历预合成中的图层
-            }
-        }
+        visitedComps.push(comp);
+        collectAllLayersFromComp(comp, false); // 仅收集当前合成的图层，不递归收集预合成中的图层
 
-        if (taskList.length === 0) {
-            log("没有找到需要处理的错误表达式");
+        if (allLayersToScan.length === 0) {
+            log("没有可扫描的图层");
             return;
         }
 
-        if (taskList.length > 0) {
-            log("找到 " + taskList.length + " 条错误表达式");
+        log("共扫描到 " + allLayersToScan.length + " 个图层，开始扫描表达式...");
+
+        ui.progressBar.value = 0;
+
+        processLayerCollectBatch();
+
+    }
+
+    loadOneCompNestedBtn.onClick = function() {
+
+        // 避免重复点击
+        if (isCollecting) return;
+
+        // 重置相关全局变量
+        taskList = [];
+        visitedComps = [];
+        allLayersToScan = [];
+        collectLayerIndex = 0;
+
+        var comp = app.project.activeItem;
+        if (!(comp instanceof CompItem)) {
+            alert(noCompText);
+            return;
         }
-        fixBtn.enabled = true; // 启用修复按钮
+
+        visitedComps.push(comp);
+        collectAllLayersFromComp(comp, true);
+
+        if (allLayersToScan.length === 0) {
+            log("没有可扫描的图层");
+            return;
+        }
+
+        log("共扫描到 " + allLayersToScan.length + " 个图层，开始扫描表达式...");
+
+        ui.progressBar.value = 0;
+
+        processLayerCollectBatch();
     };
 
     // 全收集按钮点击事件
-    loadAllPrecompBtn.onClick = function() {
+    loadAllCompBtn.onClick = function() {
 
         if (isCollecting) return;
 
@@ -461,7 +570,6 @@ function setUI(thisObj) {
         processCollectBatch();
     };
 
-
     fixBtn.onClick = function() {
         if (taskList.length === 0) {
             log("没有需要修复的表达式");
@@ -490,9 +598,62 @@ function setUI(thisObj) {
     // -----------------------------------
     // 标签页2：设置
     // -----------------------------------
+
+    // 提示如果出现界面卡顿，可以减小每批处理的数量
+    var settingInfoGroup = tab2.add("group");
+    settingInfoGroup.orientation = "column";
+    settingInfoGroup.alignChildren = ["left", "top"];
+    var settingInfoText = "如果处理过程中界面卡死情况，可以尝试减小每批处理的数量";
+    settingInfoGroup.add("statictext", undefined, settingInfoText);
+    // 上下边距
+    settingInfoGroup.margins = [0, 20, 0, 20];
+
     // 设置每次批处理的数量
-    var fixBatchSizeGroup = tab2.add("group");
+    var BatchSizeGroup = tab2.add("group");
+    BatchSizeGroup.orientation = "column";
+    BatchSizeGroup.alignChildren = ["left", "top"];
+
+    // 每批处理合成数量设置
+    var collectCompBatchSizeGroup = BatchSizeGroup.add("group");
+    collectCompBatchSizeGroup.orientation = "row";
+    collectCompBatchSizeGroup.add("statictext", undefined, "每批处理合成数量:");
+    var collectCompBatchSizeInput = collectCompBatchSizeGroup.add("edittext", undefined, collectCompBatchSize.toString());
+    collectCompBatchSizeInput.preferredSize.width = 50;
+    var collectCompBatchSizeSaveBtn = collectCompBatchSizeGroup.add("button", undefined, "保存");
+    collectCompBatchSizeSaveBtn.onClick = function() {
+        var input = parseInt(collectCompBatchSizeInput.text);
+        if (isNaN(input) || input <= 0) {
+            alert("请输入一个有效的正整数！");
+            collectCompBatchSizeInput.text = collectCompBatchSize.toString();
+            return;
+        }
+        collectCompBatchSize = input;
+        alert("每批处理合成数量已更新为: " + collectCompBatchSize);
+    };
+
+    // 每批处理图层数量设置
+    var collectLayerBatchSizeGroup = BatchSizeGroup.add("group");
+    collectLayerBatchSizeGroup.orientation = "row";
+    collectLayerBatchSizeGroup.add("statictext", undefined, "每批处理图层数量:");
+    var collectLayerBatchSizeInput = collectLayerBatchSizeGroup.add("edittext", undefined, collectLayerBatchSize.toString());
+    collectLayerBatchSizeInput.preferredSize.width = 50;
+    var collectLayerBatchSizeSaveBtn = collectLayerBatchSizeGroup.add("button", undefined, "保存");
+    collectLayerBatchSizeSaveBtn.onClick = function() {
+        var input = parseInt(collectLayerBatchSizeInput.text);
+        if (isNaN(input) || input <= 0) {
+            alert("请输入一个有效的正整数！");
+            collectLayerBatchSizeInput.text = collectLayerBatchSize.toString();
+            return;
+        }
+        collectLayerBatchSize = input;
+        alert("每批处理图层数量已更新为: " + collectLayerBatchSize);
+    };
+
+
+    // 每批处理表达式数量设置
+    var fixBatchSizeGroup = BatchSizeGroup.add("group");
     fixBatchSizeGroup.orientation = "row";
+
     fixBatchSizeGroup.add("statictext", undefined, "每批处理表达式数量:");
     var fixBatchSizeInput = fixBatchSizeGroup.add("edittext", undefined, fixBatchSize.toString());
     fixBatchSizeInput.preferredSize.width = 50;
